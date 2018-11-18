@@ -2,29 +2,23 @@
 # @Author: Jie
 # @Date:   2017-06-15 14:11:08
 # @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
-# @Last Modified time: 2018-09-05 23:05:37
+# @Last Modified time: 2018-10-15 22:38:47
 
 from __future__ import print_function
 import time
 import sys
 import argparse
 import random
-import copy
-import torch
 import gc
-import torch.autograd as autograd
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 import numpy as np
+
+import torch
+import torch.optim as optim
+
 from utils.metric import get_ner_fmeasure
 from model.seqmodel import SeqModel
 from utils.data import Data
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle as pickle
 
 seed_num = 42
 random.seed(seed_num)
@@ -163,8 +157,7 @@ def evaluate(data, model, name, nbest=None):
         instances = data.raw_Ids
     else:
         print("Error: wrong evaluate name,", name)
-    right_token = 0
-    whole_token = 0
+
     nbest_pred_results = []
     pred_scores = []
     pred_results = []
@@ -183,7 +176,7 @@ def evaluate(data, model, name, nbest=None):
         instance = instances[start:end]
         if not instance:
             continue
-        batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu, True)
+        batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.device)
         if nbest:
             scores, nbest_tag_seq = model.decode_nbest(batch_word,batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask, nbest)
             nbest_pred_result = recover_nbest_label(nbest_tag_seq, mask, data.label_alphabet, batch_wordrecover)
@@ -205,7 +198,7 @@ def evaluate(data, model, name, nbest=None):
     return speed, acc, p, r, f, pred_results, pred_scores
 
 
-def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
+def batchify_with_label(input_batch_list, device):
     """
         input: list of words, chars and labels, various length. [[words,chars, labels],[words,chars,labels],...]
             words: word ids for one sentence. (batch_size, sent_len) 
@@ -226,20 +219,21 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
     feature_num = len(features[0][0])
     chars = [sent[2] for sent in input_batch_list]
     labels = [sent[3] for sent in input_batch_list]
-    word_seq_lengths = torch.LongTensor(map(len, words))
-    max_seq_len = word_seq_lengths.max()
-    word_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len)), volatile =  volatile_flag).long()
-    label_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len)),volatile =  volatile_flag).long()
+    word_seq_lengths = torch.tensor(map(len, words), dtype=torch.long, device=device)
+    max_seq_len = word_seq_lengths.max().item()
+    word_seq_tensor = torch.zeros((batch_size, max_seq_len), dtype=torch.long, device=device)
+    label_seq_tensor = torch.zeros((batch_size, max_seq_len), dtype=torch.long, device=device)
     feature_seq_tensors = []
     for idx in range(feature_num):
-        feature_seq_tensors.append(autograd.Variable(torch.zeros((batch_size, max_seq_len)),volatile =  volatile_flag).long())
-    mask = autograd.Variable(torch.zeros((batch_size, max_seq_len)),volatile =  volatile_flag).byte()
+        feature_seq_tensors.append(torch.zeros((batch_size, max_seq_len), dtype=torch.long, device=device))
+    mask = torch.zeros((batch_size, max_seq_len), dtype=torch.uint8, device=device)
     for idx, (seq, label, seqlen) in enumerate(zip(words, labels, word_seq_lengths)):
-        word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
-        label_seq_tensor[idx, :seqlen] = torch.LongTensor(label)
-        mask[idx, :seqlen] = torch.Tensor([1]*seqlen)
+        seqlen = seqlen.item()
+        word_seq_tensor[idx, :seqlen] = torch.tensor(seq, dtype=torch.long, device=device)
+        label_seq_tensor[idx, :seqlen] = torch.tensor(label, dtype=torch.long, device=device)
+        mask[idx, :seqlen] = torch.tensor([1]*seqlen, dtype=torch.uint8, device=device)
         for idy in range(feature_num):
-            feature_seq_tensors[idy][idx,:seqlen] = torch.LongTensor(features[idx][:,idy])
+            feature_seq_tensors[idy][idx,:seqlen] = torch.tensor(features[idx][:,idy], dtype=torch.long, device=device)
     word_seq_lengths, word_perm_idx = word_seq_lengths.sort(0, descending=True)
     word_seq_tensor = word_seq_tensor[word_perm_idx]
     for idx in range(feature_num):
@@ -252,12 +246,12 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
     pad_chars = [chars[idx] + [[0]] * (max_seq_len-len(chars[idx])) for idx in range(len(chars))]
     length_list = [map(len, pad_char) for pad_char in pad_chars]
     max_word_len = max(map(max, length_list))
-    char_seq_tensor = autograd.Variable(torch.zeros((batch_size, max_seq_len, max_word_len)), volatile =  volatile_flag).long()
-    char_seq_lengths = torch.LongTensor(length_list)
+    char_seq_tensor = torch.zeros((batch_size, max_seq_len, max_word_len), dtype=torch.long, device=device)
+    char_seq_lengths = torch.tensor(length_list, dtype=torch.long, device=device)
     for idx, (seq, seqlen) in enumerate(zip(pad_chars, char_seq_lengths)):
         for idy, (word, wordlen) in enumerate(zip(seq, seqlen)):
             # print len(word), wordlen
-            char_seq_tensor[idx, idy, :wordlen] = torch.LongTensor(word)
+            char_seq_tensor[idx, idy, :wordlen] = torch.tensor(word, dtype=torch.long, device=device)
     
     char_seq_tensor = char_seq_tensor[word_perm_idx].view(batch_size*max_seq_len,-1)
     char_seq_lengths = char_seq_lengths[word_perm_idx].view(batch_size*max_seq_len,)
@@ -265,16 +259,7 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
     char_seq_tensor = char_seq_tensor[char_perm_idx]
     _, char_seq_recover = char_perm_idx.sort(0, descending=False)
     _, word_seq_recover = word_perm_idx.sort(0, descending=False)
-    if gpu:
-        word_seq_tensor = word_seq_tensor.cuda()
-        for idx in range(feature_num):
-            feature_seq_tensors[idx] = feature_seq_tensors[idx].cuda()
-        word_seq_lengths = word_seq_lengths.cuda()
-        word_seq_recover = word_seq_recover.cuda()
-        label_seq_tensor = label_seq_tensor.cuda()
-        char_seq_tensor = char_seq_tensor.cuda()
-        char_seq_recover = char_seq_recover.cuda()
-        mask = mask.cuda()
+
     return word_seq_tensor,feature_seq_tensors, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
 
 
@@ -284,7 +269,6 @@ def train(data):
     save_data_name = data.model_dir +".dset"
     data.save(save_data_name)
     model = SeqModel(data)
-    loss_function = nn.NLLLoss()
     if data.optimizer.lower() == "sgd":
         optimizer = optim.SGD(model.parameters(), lr=data.HP_lr, momentum=data.HP_momentum,weight_decay=data.HP_l2)
     elif data.optimizer.lower() == "adagrad":
@@ -308,7 +292,6 @@ def train(data):
         if data.optimizer == "SGD":
             optimizer = lr_decay(optimizer, idx, data.HP_lr_decay, data.HP_lr)
         instance_count = 0
-        sample_id = 0
         sample_loss = 0
         total_loss = 0
         right_token = 0
@@ -329,7 +312,7 @@ def train(data):
             instance = data.train_Ids[start:end]
             if not instance:
                 continue
-            batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu)
+            batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.device)
             instance_count += 1
             loss, tag_seq = model.neg_log_likelihood_loss(batch_word,batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, mask)
             right, whole = predict_check(tag_seq, batch_label, mask)
@@ -437,7 +420,8 @@ if __name__ == '__main__':
     print("aaa",data.dset_dir)
     status = args.status.lower()
     save_model_dir = args.savemodel
-    data.HP_gpu = torch.cuda.is_available()
+    data.HP_device = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu")
     print("Seed num:",seed_num)
     data.number_normalized = True
     data.word_emb_dir = "../data/glove.6B.100d.txt"

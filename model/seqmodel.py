@@ -2,7 +2,7 @@
 # @Author: Jie Yang
 # @Date:   2017-10-17 16:47:32
 # @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
-# @Last Modified time: 2018-03-30 16:20:07
+# @Last Modified time: 2018-10-15 23:42:03
 
 from __future__ import print_function
 from __future__ import absolute_import
@@ -23,14 +23,14 @@ class SeqModel(nn.Module):
         print("word feature extractor: ", data.word_feature_extractor)
         print("use crf: ", self.use_crf)
 
-        self.gpu = data.HP_gpu
+        self.device = data.HP_device
         self.average_batch = data.average_batch_loss
         ## add two more label for downlayer lstm, use original label size for CRF
         label_size = data.label_alphabet_size
         data.label_alphabet_size += 2
         self.word_hidden = WordSequence(data)
         if self.use_crf:
-            self.crf = CRF(label_size, self.gpu)
+            self.crf = CRF(label_size, self.device)
 
 
     def neg_log_likelihood_loss(self, word_inputs, feature_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover, batch_label, mask):
@@ -75,9 +75,8 @@ class SeqModel(nn.Module):
         if not self.use_crf:
             print("Nbest output is currently supported only for CRF! Exit...")
             exit(0)
-        outs = self.word_hidden(word_inputs,feature_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover)
-        batch_size = word_inputs.size(0)
-        seq_len = word_inputs.size(1)
-        scores, tag_seq = self.crf._viterbi_decode_nbest(outs, mask, nbest)
+        with torch.no_grad():
+            outs = self.word_hidden(word_inputs,feature_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover)
+            scores, tag_seq = self.crf._viterbi_decode_nbest(outs, mask, nbest)
         return scores, tag_seq
 

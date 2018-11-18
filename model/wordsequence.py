@@ -2,7 +2,7 @@
 # @Author: Jie Yang
 # @Date:   2017-10-17 16:47:32
 # @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
-# @Last Modified time: 2018-04-26 14:50:58
+# @Last Modified time: 2018-10-15 23:05:57
 from __future__ import print_function
 from __future__ import absolute_import
 import torch.nn as nn
@@ -14,7 +14,7 @@ class WordSequence(nn.Module):
     def __init__(self, data):
         super(WordSequence, self).__init__()
         print("build word sequence feature extractor: %s..."%(data.word_feature_extractor))
-        self.gpu = data.HP_gpu
+        self.device = data.HP_device
         self.use_char = data.use_char
         # self.batch_size = data.HP_batch_size
         # self.hidden_dim = data.HP_hidden_dim
@@ -58,17 +58,7 @@ class WordSequence(nn.Module):
         # The linear layer that maps from hidden state space to tag space
         self.hidden2tag = nn.Linear(data.HP_hidden_dim, data.label_alphabet_size)
 
-        if self.gpu:
-            self.droplstm = self.droplstm.cuda()
-            self.hidden2tag = self.hidden2tag.cuda()
-            if self.word_feature_extractor == "CNN":
-                self.word2cnn = self.word2cnn.cuda()
-                for idx in range(self.cnn_layer):
-                    self.cnn_list[idx] = self.cnn_list[idx].cuda()
-                    self.cnn_drop_list[idx] = self.cnn_drop_list[idx].cuda()
-                    self.cnn_batchnorm_list[idx] = self.cnn_batchnorm_list[idx].cuda()
-            else:
-                self.lstm = self.lstm.cuda()
+        self.to(self.device)
 
 
     def forward(self, word_inputs, feature_inputs, word_seq_lengths, char_inputs, char_seq_lengths, char_seq_recover):

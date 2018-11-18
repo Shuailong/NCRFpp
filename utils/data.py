@@ -2,7 +2,7 @@
 # @Author: Jie
 # @Date:   2017-06-14 17:34:32
 # @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
-# @Last Modified time: 2018-06-22 00:01:47
+# @Last Modified time: 2018-10-15 23:33:34
 from __future__ import print_function
 from __future__ import absolute_import
 import sys
@@ -100,7 +100,7 @@ class Data:
         self.HP_lstm_layer = 1
         self.HP_bilstm = True
 
-        self.HP_gpu = False
+        self.HP_gpu = True
         self.HP_lr = 0.015
         self.HP_lr_decay = 0.05
         self.HP_clip = None
