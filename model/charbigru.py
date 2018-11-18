@@ -2,7 +2,11 @@
 # @Author: Jie Yang
 # @Date:   2017-10-17 16:47:32
 # @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
+<<<<<<< HEAD
 # @Last Modified time: 2018-10-15 22:57:14
+=======
+# @Last Modified time: 2018-10-18 11:12:13
+>>>>>>> 63eb1c5535ac597e3f583f653222c1cb657d22eb
 from __future__ import print_function
 import torch
 import torch.nn as nn
@@ -45,7 +49,12 @@ class CharBiGRU(nn.Module):
         batch_size = input.size(0)
         char_embeds = self.char_drop(self.char_embeddings(input))
         pack_input = pack_padded_sequence(char_embeds, seq_lengths, True)
+<<<<<<< HEAD
         _, char_hidden = self.char_lstm(pack_input)
+=======
+        char_rnn_out, char_hidden = self.char_lstm(pack_input, char_hidden)
+        # char_rnn_out, _ = pad_packed_sequence(char_rnn_out)
+>>>>>>> 63eb1c5535ac597e3f583f653222c1cb657d22eb
         return char_hidden.transpose(1,0).contiguous().view(batch_size,-1)
 
     def get_all_hiddens(self, input, seq_lengths):
